@@ -37,8 +37,8 @@ def load_mesh(stl_path: Path) -> trimesh.Trimesh:
 
 def clean_mesh(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     mesh = mesh.copy()
-    mesh.remove_duplicate_faces()
-    mesh.remove_degenerate_faces()
+    mesh.update_faces(mesh.unique_faces())
+    mesh.update_faces(mesh.nondegenerate_faces())
     mesh.remove_unreferenced_vertices()
     mesh.process(validate=True)
     trimesh.repair.fix_normals(mesh)
@@ -115,8 +115,23 @@ def build_cutouts(mesh: trimesh.Trimesh, config: CutoutConfig) -> List[trimesh.T
     return cutouts
 
 
-def boolean_subtract(mesh: trimesh.Trimesh, cutouts: Iterable[trimesh.Trimesh]) -> trimesh.Trimesh:
-    result = trimesh.boolean.difference([mesh, *cutouts], engine="scad")
+def choose_boolean_engine() -> str:
+    available = set(trimesh.boolean.engines_available)
+    if "scad" in available:
+        return "scad"
+    for fallback in ("manifold", "blender"):
+        if fallback in available:
+            return fallback
+    raise RuntimeError(
+        "No trimesh boolean engine available. Install OpenSCAD-compatible trimesh, "
+        "or install manifold3d (recommended) to enable the 'manifold' engine."
+    )
+
+
+def boolean_subtract(
+    mesh: trimesh.Trimesh, cutouts: Iterable[trimesh.Trimesh], engine: str
+) -> trimesh.Trimesh:
+    result = trimesh.boolean.difference([mesh, *cutouts], engine=engine)
     if result is None or result.is_empty:
         raise RuntimeError("Boolean subtraction failed or produced an empty mesh")
     if isinstance(result, trimesh.Scene):
@@ -126,11 +141,13 @@ def boolean_subtract(mesh: trimesh.Trimesh, cutouts: Iterable[trimesh.Trimesh]) 
     return result
 
 
-def process_stl(stl_path: Path, output_dir: Path, config: CutoutConfig) -> Path:
+def process_stl(
+    stl_path: Path, output_dir: Path, config: CutoutConfig, engine: str
+) -> Path:
     original = load_mesh(stl_path)
     original = clean_mesh(original)
     cutouts = build_cutouts(original, config)
-    modified = boolean_subtract(original, cutouts)
+    modified = boolean_subtract(original, cutouts, engine)
     modified = clean_mesh(modified)
 
     output_path = output_dir / f"{stl_path.stem}_modified.stl"
@@ -177,10 +194,12 @@ def main() -> None:
         raise SystemExit(f"No input STL files matched pattern: {args.input_dir / args.pattern}")
 
     config = CutoutConfig()
+    engine = choose_boolean_engine()
 
     print(f"Found {len(source_files)} STL files in {args.input_dir}")
+    print(f"Using boolean engine: {engine}")
     for stl_path in source_files:
-        output_path = process_stl(stl_path, args.output_dir, config)
+        output_path = process_stl(stl_path, args.output_dir, config, engine)
         print(f"OK: {stl_path.name} -> {output_path}")
 
 

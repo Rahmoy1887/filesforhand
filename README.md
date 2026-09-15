@@ -16,8 +16,8 @@ For each source STL, the script:
 ### Requirements
 
 - Python 3.9+
-- `trimesh` (`pip install trimesh`)
-- OpenSCAD installed and available on `PATH`
+- `trimesh`, `scipy`, `manifold3d` (`pip install trimesh scipy manifold3d`)
+- Optional: OpenSCAD on `PATH` (used automatically if a compatible `scad` boolean engine is available)
 
 ### Run
 
